@@ -1,0 +1,62 @@
+# ChatGPT 分享长图 · 本地版
+
+一个用于 Chrome + Tampermonkey 的油猴脚本：单条回答一键复制为图片，也可以多选消息生成高清 PNG 长图。
+
+当前版本：**v1.0.7**。绘图库已内置，安装后无需 API Key 或额外服务。
+
+## 功能
+
+- **单条回答直接复制**：点击回答底部“…”右侧的图片图标，后台生成 PNG 并复制到剪贴板。只显示短提示，不打开预览面板、不扫描历史。
+- **多选对话**：通过右下角“分享为图片”读取当前对话，可以全选、只选回答或选择指定消息。
+- **分享排版**：支持中文、常见 Markdown、代码、表格及已渲染的 KaTeX 公式；可修改标题，选择深浅配色。
+- **长图输出**：多选默认宽 1520 像素，按内容边界自动分图，支持下载和复制。
+- **本地处理**：不上传对话，不调用 ChatGPT 内部对话 API，不记录聊天日志。
+
+## 安装到 Chrome
+
+[直接安装油猴脚本](https://raw.githubusercontent.com/ArtoriaShu/chatgpt-share-image/main/dist/chatgpt-share-image.user.js) · [下载版本](https://github.com/ArtoriaShu/chatgpt-share-image/releases/latest)
+
+1. 安装官方 [Tampermonkey（油猴）](https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)。
+2. 在 `chrome://extensions/` 中进入 Tampermonkey 的详情，开启“允许用户脚本”。旧版 Chrome 按油猴提示开启开发者模式。参见 [油猴说明](https://www.tampermonkey.net/faq.php#Q209)。
+3. 从 [Releases](https://github.com/ArtoriaShu/chatgpt-share-image/releases/latest) 下载 `chatgpt-share-image.user.js` 或 ZIP 安装包。
+4. 油猴管理面板 → 实用工具 → 从文件导入，选择下载的文件，确认安装。也可从本仓库的 [`dist/`](dist/) 获取安装文件。
+5. 刷新 ChatGPT 对话页面。
+
+如果导入界面不接受 JS 文件：用文本编辑器复制脚本全部内容，油猴 → 添加新脚本，替换默认内容，保存。
+
+## 使用
+
+**分享单条回答**：点击回答底部的图片图标。看到“图片已复制”后，可直接粘贴给朋友。沿用多选面板最近设置的配色。浏览器拒绝复制时，小提示提供“重试复制”和“保存 PNG”。
+
+**分享多条消息**：点击右下角“分享为图片”。脚本会自动滚动读取当前对话，并恢复原滚动位置。读取完成后选择消息、标题、配色和图片长度，点击“生成图片”。生成后每张图片可分别复制或保存。
+
+## 范围与限制
+
+- 仅识别当前页面已显示或滚动后加载的当前对话分支。完整旧历史仍依赖网页自行加载。
+- 导出的是独立分享卡片，不是原页面的逐像素截图。视频、交互图表、附件文件和折叠的思考内容不保证可导出。
+- 为导出图片，可能读取图片本身的地址；跨域限制、过期地址或身份验证导致无法读取时，以提示框代替并显示数量。
+- 单条回答复制为一张完整图片。很长的回答会适当降低分辨率，最高 32760 像素高；超过 32000 CSS 像素的极长回答，请使用多选入口分图保存。
+- 多选模式默认每张最长约 9600 像素；“较长图片”最长约 24000 像素。单批最多 40 张，跳过的消息会标明省略数量。
+- 整段读取有 90 秒和 600 步上限。停止或未确认完整时会明确提示。回答结束后再使用；页面新增消息或切换对话后，多选模式需要重新读取。
+- ChatGPT 页面结构改变后可能需要更新脚本。
+
+## 开发与测试
+
+需要 Node.js 20 或更高版本。
+
+```sh
+npm install
+npx playwright install chromium
+npm run build
+npm test
+```
+
+如果使用已有 Chromium，可通过 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 指定浏览器路径。
+
+- `src/`：可读源码及油猴元数据。
+- `vendor/`：内置 html2canvas-pro 2.5.0 及其 MIT 授权。
+- `dist/`：可直接安装的脚本及 ZIP。
+- `tests/browser.mjs`：消息识别、正反向滚动、虚拟列表、单条复制、多选分图、主题、下载、取消、切换对话保护和重复注入。
+- `tests/direct-copy.mjs`：长回答完整复制、面板隐藏、浏览器拒绝后的重试。
+
+v1.0.7 已通过上述自动化测试，并在实际已登录的 Chrome 对话中验证单击复制成功且不打开面板。

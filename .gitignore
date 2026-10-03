@@ -1,0 +1,5 @@
+tests/output-*.png
+tests/preview-panel.png
+tests/test-results.json
+.DS_Store
+node_modules/

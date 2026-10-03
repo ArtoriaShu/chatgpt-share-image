@@ -1,0 +1,55 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>周末旅行计划 - ChatGPT</title>
+<style>body{margin:0;background:#f9faf9;font:17px/1.7 system-ui}main{height:90vh;overflow:auto;scroll-behavior:smooth;padding:24px 15%;}article{padding:25px;border-bottom:1px solid #ddd}.markdown pre{overflow:auto;background:#eee}table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:7px}</style>
+<main></main><script>
+const main=document.querySelector('main');
+for(let i=0;i<18;i++){
+ const article=document.createElement('article'); article.dataset.testid='conversation-turn-'+i;
+ const msg=document.createElement('div');msg.dataset.messageAuthorRole=i%2?'assistant':'user';msg.dataset.messageId='msg-'+i;
+ msg.innerHTML=i%2?`<div class="markdown"><h2>第 ${i+1} 条：杭州两日游</h2><p>建议上午游西湖，下午去龙井村。步行时注意天气，安排充分的休息时间。</p><ul><li>上午：西湖、苏堤与花港观鱼。</li><li>下午：龙井村，喝茶并欣赏风景。</li></ul><table><tr><th>项目</th><th>预算</th><th>备注</th></tr><tr><td>交通</td><td>200 元</td><td>地铁＋打车</td></tr><tr><td>餐饮</td><td>300 元</td><td>两人</td></tr></table><pre><div>JavaScript <button>复制代码</button></div><code>const plan = { destination: "杭州", days: 2 };\nconsole.log(plan.destination);\n${'// 很长的代码行，用来检查是否自动换行而不丢失内容。'.repeat(8)}</code></pre><blockquote>旅行的意义也在于慢下来。</blockquote><p><strong>中文、English、数字 123.45</strong>，以及<a href="https://example.com">链接</a>。</p></div>`:`<div class="whitespace-pre-wrap">第 ${i+1} 条：我想周末去杭州，请帮我安排一个两天的行程。\n预算控制在 1500 元以内。</div>`;
+ article.append(msg);
+ const footer=document.createElement('div');footer.className='turn-action-controls';
+ const bar=document.createElement('div');const copy=Object.assign(document.createElement('button'),{textContent:'复制'});copy.dataset.testid='copy-turn-action-button';bar.append(copy);footer.append(bar);article.append(footer);main.append(article);
+}
+main.scrollTop=main.scrollHeight/2;
+if(location.search.includes('modern')){
+ for(const article of main.children){
+  const msg=article.firstElementChild,role=msg.dataset.messageAuthorRole,id=msg.dataset.messageId;
+  article.removeAttribute('data-testid');article.setAttribute('data-turn-key',id);
+  msg.removeAttribute('data-message-author-role');msg.removeAttribute('data-message-id');
+  msg.setAttribute('data-content-search-unit-key','fallback-'+id+':0:'+role);
+  msg.setAttribute('data-chatgpt-search-unit-key','fallback-'+id+':0:'+role);
+  article.setAttribute('data-chatgpt-search-message-ids',id);
+  if(role==='user')msg.firstElementChild.setAttribute('data-user-message-bubble','true');
+  else{
+   const head=document.createElement('h4');head.className='sr-only';head.setAttribute('data-conversation-role','assistant');head.textContent='ChatGPT 说：';msg.prepend(head);
+   const body=msg.querySelector('.markdown');body.className='MarkdownRoot-rZKhxa';body.setAttribute('data-markdown-text-style','');body.setAttribute('data-chatgpt-selection-message-id',id);
+   const wrap=document.createElement('div');msg.before(wrap);wrap.append(msg);
+   const promptActions=document.createElement('div');promptActions.className='turn-action-controls';
+   const promptCopy=document.createElement('button');promptCopy.setAttribute('aria-label','复制消息');promptActions.append(promptCopy);wrap.append(promptActions);
+   const replyCopy=article.querySelector('[data-testid="copy-turn-action-button"]');replyCopy.removeAttribute('data-testid');replyCopy.setAttribute('aria-label','复制');
+  }
+ }
+}
+if(location.search.includes('reverse')){
+ const content=document.createElement('div');content.style.cssText='flex-shrink:0;width:100%';
+ content.append(...main.children);main.append(content);
+ main.style.cssText='display:flex;flex-direction:column-reverse;padding:0;scroll-behavior:auto';
+ main.scrollTop=-(main.scrollHeight-main.clientHeight)/2;
+}
+if(location.search.includes('virtual')){
+ const saved=[...main.children].map(el=>el.outerHTML);
+ main.style.cssText='position:relative;padding:0;scroll-behavior:auto';
+ function draw(){
+  const start=Math.max(0,Math.floor(main.scrollTop/720)-1),end=Math.min(saved.length,start+4);
+  main.innerHTML='<div style="height:'+saved.length*720+'px"></div>';
+  for(let i=start;i<end;i++){
+   const holder=document.createElement('div');holder.innerHTML=saved[i];const el=holder.firstChild;
+   const unit=el.querySelector('[data-content-search-unit-key]');
+   if(unit){const role=unit.getAttribute('data-content-search-unit-key').split(':').at(-1);unit.setAttribute('data-content-search-unit-key','fallback-turn-'+(i-start)+':0:'+role);unit.setAttribute('data-chatgpt-search-unit-key','fallback-turn-'+(i-start)+':0:'+role);}
+   el.style.cssText='position:absolute;left:15%;top:'+i*720+'px;width:70%;height:720px;overflow:hidden;box-sizing:border-box';
+   main.append(el);
+  }
+ }
+ main.addEventListener('scroll',draw);draw();main.scrollTop=720*8;draw();
+}
+</script></html>
