@@ -1,12 +1,14 @@
 // ==UserScript==
 // @name         ChatGPT 分享长图 · 本地版
 // @namespace    local.chatgpt.share-image
-// @version      1.0.7
+// @version      1.0.8
 // @description  单条回答一键复制图片，也可多选对话生成高清 PNG 长图；本地处理。
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @run-at       document-idle
 // @grant        GM_registerMenuCommand
+// @grant        GM_xmlhttpRequest
+// @connect      *
 // @noframes
 // ==/UserScript==
 
@@ -157,6 +159,23 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
     return nodeKeys.get(node);
   }
   const mathProps = ['display','position','top','left','right','bottom','width','height','min-width','vertical-align','font-family','font-size','font-style','font-weight','line-height','letter-spacing','margin-left','margin-right','margin-top','margin-bottom','padding-left','padding-right','border-top-width','border-top-style','border-bottom-width','border-bottom-style','transform','transform-origin','text-align','white-space'];
+  const citationSelector = '[data-testid*="citation"], [data-testid*="source-pill"], [data-testid*="source-chip"], [data-citation-id], [data-type="citation"], .citation-link, [class*="Citation"], [class*="citation"]';
+  function decorativeImage(img) {
+    const url = img.currentSrc || img.src || '';
+    if (/\/(?:favicon(?:s)?(?:[/.?]|$)|s2\/favicons)|[?&](?:isFavicon|favicon)=/i.test(url)) return true;
+    const rect = img.getBoundingClientRect();
+    // A citation container can also include a genuine large illustration.
+    if (img.closest(citationSelector) && !(rect.width > 48 && rect.height > 48 || !rect.width && img.naturalWidth > 64 && img.naturalHeight > 64)) return true;
+    return rect.width > 0 && rect.height > 0 && rect.width <= 32 && rect.height <= 32 &&
+      (img.getAttribute('role') === 'presentation' || img.alt === '' || img.naturalWidth <= 64 && img.naturalHeight <= 64);
+  }
+  function rasterImage(loaded) {
+    const canvas = document.createElement('canvas');
+    const factor = Math.min(1, 1600 / loaded.naturalWidth, 2400 / loaded.naturalHeight);
+    canvas.width = Math.max(1, Math.round(loaded.naturalWidth * factor)); canvas.height = Math.max(1, Math.round(loaded.naturalHeight * factor));
+    canvas.getContext('2d').drawImage(loaded, 0, 0, canvas.width, canvas.height);
+    const data = canvas.toDataURL('image/png'); canvas.width = 1; canvas.height = 1; return data;
+  }
   function cleanMessage(node) {
     const copy = node.cloneNode(true);
     const original = [node, ...node.querySelectorAll('*')];
@@ -175,14 +194,23 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
         catch { c.replaceWith(document.createTextNode('[画布无法读取]')); }
       }
       if (el.tagName === 'IMG') {
-        c.src = el.currentSrc || el.src;
-        c.removeAttribute('srcset'); c.removeAttribute('loading'); c.removeAttribute('width'); c.removeAttribute('height');
+        if (decorativeImage(el)) { c.remove(); return; }
+        c.src = el.currentSrc || el.src || el.getAttribute('data-src') || '';
+        // Capture an already loaded, origin-clean image without requesting it again.
+        if (el.complete && el.naturalWidth) { try { c.src = rasterImage(el); } catch { /* use the image loader below */ } }
+        for (const attr of ['srcset','loading','width','height','crossorigin','referrerpolicy']) c.removeAttribute(attr);
       }
-      if (el.hidden || el.getAttribute('aria-hidden') === 'true' && !el.closest('.katex')) c.remove();
+      // Image cards may mark the visible image aria-hidden because the button labels it.
+      const hasImage = el.tagName === 'IMG' || el.querySelector('img');
+      if (el.hidden || el.getAttribute('aria-hidden') === 'true' && !hasImage && !el.closest('.katex')) c.remove();
     });
-    copy.querySelectorAll('script,style,iframe,video,audio,form,input,textarea,select,[data-testid*="copy"],[data-testid*="thumb"],.sr-only,.katex-mathml').forEach(el => el.remove());
+    copy.querySelectorAll('script,style,iframe,video,audio,form,input,textarea,select,.turn-action-controls,.sr-only,.katex-mathml').forEach(el => el.remove());
+    copy.querySelectorAll(citationSelector).forEach(el => { if (el.tagName !== 'IMG' && !el.querySelector('img')) el.remove(); });
+    // <picture> sources can override an embedded data URL inside the export frame.
+    copy.querySelectorAll('picture source').forEach(el => el.remove());
     copy.querySelectorAll('button').forEach(el => {
-      if (/citation|source/i.test(el.getAttribute('data-testid') || '') || el.closest('[data-testid*="citation"]')) el.replaceWith(document.createTextNode(el.textContent));
+      // Image cards are buttons too: unwrap them, preserving their actual content.
+      if (el.querySelector('img')) el.replaceWith(...el.childNodes);
       else el.remove();
     });
     copy.querySelectorAll('svg').forEach(el => { if (!el.closest('.katex')) el.remove(); });
@@ -320,28 +348,66 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
   }
   async function embedImages(sheet) {
     let failed = 0;
+    const pending = new Map();
     await Promise.all([...sheet.querySelectorAll('img')].map(async img => {
       const url = img.src;
       try {
-        if (url.startsWith('data:')) { await img.decode(); return; }
-        const loaded = new Image(); loaded.crossOrigin = 'anonymous';
-        await new Promise((resolve, reject) => {
-          const timer = setTimeout(() => { loaded.src = ''; reject(new Error('timeout')); }, 8000);
-          loaded.onload = () => { clearTimeout(timer); resolve(); };
-          loaded.onerror = () => { clearTimeout(timer); reject(new Error('CORS')); };
-          loaded.src = url;
-        });
-        const canvas = document.createElement('canvas');
-        const factor = Math.min(1, 1600 / loaded.naturalWidth, 2400 / loaded.naturalHeight);
-        canvas.width = Math.max(1, Math.round(loaded.naturalWidth * factor)); canvas.height = Math.max(1, Math.round(loaded.naturalHeight * factor));
-        canvas.getContext('2d').drawImage(loaded, 0, 0, canvas.width, canvas.height);
-        img.src = canvas.toDataURL('image/png'); await img.decode();
+        if (!pending.has(url)) pending.set(url, embedImage(url));
+        img.src = await pending.get(url); await img.decode();
       } catch {
         failed++;
         const placeholder = sheet.ownerDocument.createElement('div'); placeholder.className = 'placeholder';
         placeholder.textContent = `[图片无法嵌入${img.alt ? `：${img.alt}` : '，原站未允许读取'}]`; img.replaceWith(placeholder);
       }
     })); return failed;
+  }
+  async function loadImage(url, cors = false) {
+    const loaded = new Image();
+    if (cors) loaded.crossOrigin = 'anonymous';
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { loaded.src = ''; reject(new Error('图片读取超时')); }, 8000);
+      loaded.onload = () => { clearTimeout(timer); resolve(); };
+      loaded.onerror = () => { clearTimeout(timer); reject(new Error('图片读取失败')); };
+      loaded.src = url;
+    });
+    if (!loaded.naturalWidth || !loaded.naturalHeight) throw new Error('图片为空');
+    return loaded;
+  }
+  function requestImageBlob(url) {
+    return new Promise((resolve, reject) => {
+      if (typeof GM_xmlhttpRequest !== 'function') { reject(new Error('请更新油猴脚本以启用跨域配图读取')); return; }
+      // Only retrieve an image URL already present in this reply. No page text or cookies are sent.
+      GM_xmlhttpRequest({method:'GET', url, anonymous:true, responseType:'blob', timeout:12000,
+        onload: response => {
+          if (response.status < 200 || response.status >= 300 || !response.response || response.response.size > 25000000) { reject(new Error('图片响应无效')); return; }
+          resolve(response.response);
+        },
+        onerror: () => reject(new Error('图片请求失败')), ontimeout: () => reject(new Error('图片请求超时')),
+        onabort: () => reject(new Error('图片请求已取消'))
+      });
+    });
+  }
+  async function embedImage(url) {
+    const parsed = new URL(url, location.href);
+    if (!['https:','http:','data:','blob:'].includes(parsed.protocol)) throw new Error('不支持的图片地址');
+    try { return rasterImage(await loadImage(url, /^https?:/.test(parsed.protocol))); }
+    catch (error) {
+      if (!/^https?:/.test(parsed.protocol)) throw error;
+      // Same-origin protected attachments can use the existing site session.
+      let blob;
+      if (parsed.origin === location.origin) {
+        const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 10000);
+        try {
+          const response = await fetch(url, {credentials:'same-origin', signal:controller.signal});
+          if (!response.ok) throw new Error('图片请求失败');
+          blob = await response.blob();
+          if (blob.size > 25000000) throw new Error('图片过大');
+        } finally { clearTimeout(timer); }
+      } else blob = await requestImageBlob(url);
+      const objectURL = URL.createObjectURL(blob);
+      try { return rasterImage(await loadImage(objectURL)); }
+      finally { URL.revokeObjectURL(objectURL); }
+    }
   }
   // Split at message/block/line boundaries; never allocate an unbounded canvas.
   function cutsFor(sheet, maxHeight) {
