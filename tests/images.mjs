@@ -18,7 +18,7 @@ try{
  await page.goto(`http://127.0.0.1:${server.address().port}/?modern`);
  await page.evaluate(origin=>{
   const body=document.querySelector('[data-chatgpt-selection-message-id="msg-1"]');
-  body.innerHTML='<h2>正文配图测试</h2><p>正文正常保留。</p>'+ 
+  body.innerHTML='<h2>正文配图测试</h2><p>正文正常保留。</p>'+
    `<span data-testid="webpage-citation-pill"><img src="${origin}/favicon.ico" width="16" height="16">来源网站 +1</span>`+
    `<div class="citation-image-card"><button data-testid="image-thumbnail"><picture><source srcset="${origin}/no-cors.png"><img src="${origin}/no-cors.png" aria-hidden="true" width="480" height="240" alt="正文配图"></picture></button></div>`+
    `<a href="https://example.com"><img src="${origin}/favicon.ico" width="16" height="16" alt=""></a>`+
