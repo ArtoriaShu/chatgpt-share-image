@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT 分享长图 · 本地版
 // @namespace    local.chatgpt.share-image
-// @version      1.0.8
+// @version      1.0.9
 // @description  单条回答一键复制图片，也可多选对话生成高清 PNG 长图；本地处理。
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -169,6 +169,26 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
     return rect.width > 0 && rect.height > 0 && rect.width <= 32 && rect.height <= 32 &&
       (img.getAttribute('role') === 'presentation' || img.alt === '' || img.naturalWidth <= 64 && img.naturalHeight <= 64);
   }
+  function sourceBadges(node) {
+    const badges = new Set();
+    const hasBodyImage = el => [...el.querySelectorAll('img')].some(img => !decorativeImage(img));
+    node.querySelectorAll(citationSelector).forEach(el => {
+      if (el.tagName !== 'IMG' && !hasBodyImage(el)) badges.add(el);
+    });
+    // Some ChatGPT source pills have only a popover marker and a favicon,
+    // without any citation attributes. Remove the compact control as a whole.
+    node.querySelectorAll('img').forEach(img => {
+      if (!decorativeImage(img)) return;
+      for (let el = img.parentElement; el && el !== node; el = el.parentElement) {
+        if (el.matches('p,li,blockquote,pre,figure')) break;
+        const control = el.matches('a,button,[role="button"],span[data-state],span.inline-flex[class*="rounded"]');
+        if (control && el.textContent.trim().length <= 160 && !hasBodyImage(el)) {
+          badges.add(el); break;
+        }
+      }
+    });
+    return badges;
+  }
   function rasterImage(loaded) {
     const canvas = document.createElement('canvas');
     const factor = Math.min(1, 1600 / loaded.naturalWidth, 2400 / loaded.naturalHeight);
@@ -180,8 +200,11 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
     const copy = node.cloneNode(true);
     const original = [node, ...node.querySelectorAll('*')];
     const cloned = [copy, ...copy.querySelectorAll('*')];
+    const badges = sourceBadges(node);
     original.forEach((el, i) => {
       const c = cloned[i];
+      if (badges.has(el)) { c.remove(); return; }
+      if (c !== copy && !copy.contains(c)) return;
       c.removeAttribute('id');
       for (const attr of [...c.attributes]) if (/^on/i.test(attr.name)) c.removeAttribute(attr.name);
       c.removeAttribute('style');
@@ -205,7 +228,6 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
       if (el.hidden || el.getAttribute('aria-hidden') === 'true' && !hasImage && !el.closest('.katex')) c.remove();
     });
     copy.querySelectorAll('script,style,iframe,video,audio,form,input,textarea,select,.turn-action-controls,.sr-only,.katex-mathml').forEach(el => el.remove());
-    copy.querySelectorAll(citationSelector).forEach(el => { if (el.tagName !== 'IMG' && !el.querySelector('img')) el.remove(); });
     // <picture> sources can override an embedded data URL inside the export frame.
     copy.querySelectorAll('picture source').forEach(el => el.remove());
     copy.querySelectorAll('button').forEach(el => {

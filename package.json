@@ -1,6 +1,6 @@
 {
   "name": "chatgpt-share-image",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "description": "ChatGPT 单条回答一键复制图片与多选对话长图油猴脚本",
   "type": "module",

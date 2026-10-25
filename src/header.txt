@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT 分享长图 · 本地版
 // @namespace    local.chatgpt.share-image
-// @version      1.0.8
+// @version      1.0.9
 // @description  单条回答一键复制图片，也可多选对话生成高清 PNG 长图；本地处理。
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
