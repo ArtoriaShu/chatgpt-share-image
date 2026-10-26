@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT 分享长图 · 本地版
 // @namespace    local.chatgpt.share-image
-// @version      1.0.9
+// @version      1.0.10
 // @description  单条回答一键复制图片，也可多选对话生成高清 PNG 长图；本地处理。
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -196,11 +196,67 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
     canvas.getContext('2d').drawImage(loaded, 0, 0, canvas.width, canvas.height);
     const data = canvas.toDataURL('image/png'); canvas.width = 1; canvas.height = 1; return data;
   }
+  const cardProps = ['display','flex-direction','flex-wrap','flex-grow','flex-shrink','flex-basis','justify-content','align-items','align-self','align-content','order','grid-column','grid-row','grid-auto-flow','column-gap','row-gap','padding-top','padding-right','padding-bottom','padding-left','margin-top','margin-right','margin-bottom','margin-left','border-top','border-right','border-bottom','border-left','border-radius','background-color','color','font-size','font-weight','font-style','line-height','text-align','text-decoration','white-space','vertical-align'];
+  function cardRoots(node) {
+    // Custom diagrams use layout containers rather than semantic Markdown tables.
+    return [...node.querySelectorAll('div,section,figure')].filter(el => {
+      if (el.closest('pre,.katex,.turn-action-controls') || el.matches('[data-markdown-text-style],.markdown')) return false;
+      const css = getComputedStyle(el);
+      return !!el.textContent.trim() && (/^(inline-)?(flex|grid)$/.test(css.display) ||
+        el.children.length > 0 && ['border-top-width','border-right-width','border-bottom-width','border-left-width'].some(p => parseFloat(css.getPropertyValue(p)) > 0));
+    });
+  }
+  function preserveCardStyle(el, copy) {
+    const css = getComputedStyle(el);
+    for (const p of cardProps) copy.style.setProperty(p, css.getPropertyValue(p));
+    // Resolve source grid tracks into proportions so wide cards fit the PNG width.
+    for (const p of ['grid-template-columns','grid-template-rows']) {
+      const tracks = css.getPropertyValue(p);
+      if (p.endsWith('columns') && /^(?:[\d.]+px\s*)+$/.test(tracks)) {
+        copy.style.setProperty(p, tracks.replace(/([\d.]+)px/g, 'minmax(0,$1fr)'));
+      } else if (!p.endsWith('rows') || tracks === 'none') copy.style.setProperty(p, tracks);
+    }
+    copy.style.maxWidth = '100%'; copy.style.minWidth = '0';
+  }
+  function cardBackground(el) {
+    for (let current = el; current; current = current.parentElement) {
+      const bg = getComputedStyle(current).backgroundColor;
+      if (bg !== 'transparent' && !/rgba\([^)]*,\s*0\)$/.test(bg)) return bg;
+    }
+    return '#fff';
+  }
+  function exportSVG(svg) {
+    const copy = svg.cloneNode(true);
+    const originals = [svg, ...svg.querySelectorAll('*')];
+    const clones = [copy, ...copy.querySelectorAll('*')];
+    originals.forEach((el,i) => {
+      const c = clones[i], css = getComputedStyle(el);
+      for (const attr of [...c.attributes]) {
+        if (/^on/i.test(attr.name) || /(?:href)$/i.test(attr.name) && !attr.value.startsWith('#')) c.removeAttribute(attr.name);
+      }
+      for (const p of ['color','fill','fill-opacity','fill-rule','stroke','stroke-width','stroke-linecap','stroke-linejoin','stroke-dasharray','stroke-opacity','opacity','font-family','font-size','font-weight']) c.style.setProperty(p, css.getPropertyValue(p));
+    });
+    copy.querySelectorAll('script,style,foreignObject,iframe,image').forEach(el => el.remove());
+    copy.setAttribute('xmlns','http://www.w3.org/2000/svg');
+    const rect = svg.getBoundingClientRect();
+    const width = rect.width || Number(svg.getAttribute('width')) || 24;
+    const height = rect.height || Number(svg.getAttribute('height')) || 24;
+    if (!copy.hasAttribute('viewBox')) copy.setAttribute('viewBox',`0 0 ${width} ${height}`);
+    // Rasterize SVG at export resolution while retaining its CSS display size.
+    copy.setAttribute('width',width * 2); copy.setAttribute('height',height * 2);
+    copy.style.width = `${width * 2}px`; copy.style.height = `${height * 2}px`;
+    const img = document.createElement('img');
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(copy))}`;
+    img.alt = svg.getAttribute('aria-label') || '';
+    img.style.cssText = `display:inline-block;width:${width}px;height:${height}px;max-width:100%;margin:0;vertical-align:middle;flex-shrink:0`;
+    return img;
+  }
   function cleanMessage(node) {
     const copy = node.cloneNode(true);
     const original = [node, ...node.querySelectorAll('*')];
     const cloned = [copy, ...copy.querySelectorAll('*')];
     const badges = sourceBadges(node);
+    const cards = cardRoots(node);
     original.forEach((el, i) => {
       const c = cloned[i];
       if (badges.has(el)) { c.remove(); return; }
@@ -208,6 +264,12 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
       c.removeAttribute('id');
       for (const attr of [...c.attributes]) if (/^on/i.test(attr.name)) c.removeAttribute(attr.name);
       c.removeAttribute('style');
+      if (cards.some(root => root === el || root.contains(el))) preserveCardStyle(el, c);
+      else if (Number(getComputedStyle(el).fontWeight) >= 600) c.style.fontWeight = getComputedStyle(el).fontWeight;
+      if (cards.includes(el) && !cards.some(root => root !== el && root.contains(el))) c.style.backgroundColor = cardBackground(el);
+      if (el.tagName.toLowerCase() === 'svg' && !el.closest('.katex')) {
+        c.replaceWith(exportSVG(el)); return;
+      }
       if (el.closest('.katex')) {
         const css = getComputedStyle(el);
         for (const p of mathProps) c.style.setProperty(p, css.getPropertyValue(p));

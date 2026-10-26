@@ -1,4 +1,5 @@
 tests/output-*.png
+tests/output-*.html
 tests/preview-panel.png
 tests/test-results.json
 .DS_Store

@@ -1,6 +1,6 @@
 {
   "name": "chatgpt-share-image",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "private": true,
   "description": "ChatGPT 单条回答一键复制图片与多选对话长图油猴脚本",
   "type": "module",
@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "node build.mjs",
-    "test": "node tests/browser.mjs && node tests/direct-copy.mjs && node tests/images.mjs"
+    "test": "node tests/browser.mjs && node tests/direct-copy.mjs && node tests/images.mjs && node tests/layouts.mjs"
   },
   "devDependencies": {
     "playwright": "1.62.1"
