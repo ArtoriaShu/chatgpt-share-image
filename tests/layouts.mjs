@@ -23,7 +23,7 @@ try{
     if(s){
      const pair=s.querySelector('.pair'), a=pair.children[0].getBoundingClientRect(),b=pair.children[1].getBoundingClientRect();
      const label=s.querySelector('.account'),card=s.querySelector('.compare');
-     window.exported={text:s.textContent,first:[a.x,a.y,a.width],second:[b.x,b.y,b.width],sheetWidth:s.getBoundingClientRect().width,cardWidth:card.getBoundingClientRect().width,overflow:card.scrollWidth>card.clientWidth,border:d.defaultView.getComputedStyle(card).borderTopWidth,background:d.defaultView.getComputedStyle(card).backgroundColor,label:d.defaultView.getComputedStyle(label).backgroundColor,bold:d.defaultView.getComputedStyle(s.querySelector('.class-bold')).fontWeight,icons:s.querySelectorAll('img').length,html:d.documentElement.outerHTML};
+     window.exported={text:s.textContent,first:[a.x,a.y,a.width],second:[b.x,b.y,b.width],sheetWidth:s.getBoundingClientRect().width,cardWidth:card.getBoundingClientRect().width,overflow:card.scrollWidth>card.clientWidth,border:d.defaultView.getComputedStyle(card).borderTopWidth,background:d.defaultView.getComputedStyle(s.querySelector('[data-gpt-share-appearance]')).backgroundColor,label:d.defaultView.getComputedStyle(label).backgroundColor,labelHeight:label.getBoundingClientRect().height,bold:d.defaultView.getComputedStyle(s.querySelector('.class-bold')).fontWeight,icons:s.querySelectorAll('img').length,html:d.documentElement.outerHTML};
     }
    }
    return remove.call(this);
@@ -37,7 +37,8 @@ try{
  assert(result.second[0]>result.first[0]+result.first[2],'column gap preserved');
  assert(result.cardWidth<result.sheetWidth && !result.overflow,'wide source grid adapts to share card');
  assert.equal(result.border,'2px');assert.equal(result.label,'rgb(222, 244, 225)');assert.equal(result.bold,'700');
- assert.equal(result.icons,6,'all device and state SVG icons retained');assert(!result.text.includes('不应导出的来源'));
+ assert(result.labelHeight<45,'account label stays on one line inside a flex column');
+ assert.equal(result.icons,6,'all device and state SVG icons retained');assert(result.text.includes('不应导出的来源'));
  assert(!(await page.locator('#gpt-share-local #toast').textContent()).includes('无法读取'));
  const png=await page.evaluate(async()=>Array.from(new Uint8Array(await (await (await navigator.clipboard.read())[0].getType('image/png')).arrayBuffer())));
  fs.writeFileSync('tests/output-layout.png',Buffer.from(png));
@@ -54,5 +55,5 @@ try{
  await page.locator('[data-gpt-share-single]').first().click();
  await page.waitForFunction(()=>document.querySelector('#gpt-share-local').shadowRoot.querySelector('#toast').textContent.startsWith('图片已复制'),{},{timeout:45000});
  assert.equal(await page.evaluate(()=>window.exported.background),'rgb(23, 34, 29)','transparent dark-source card keeps a readable background');
- console.log(JSON.stringify({twoColumns:true,borderAndLabels:true,classBold:true,bodySVGIcons:result.icons,sourceBadgesExcluded:true,renderedIconPixels:colors,pageErrors:errors}));
+ console.log(JSON.stringify({twoColumns:true,borderAndLabels:true,classBold:true,bodySVGIcons:result.icons,compactSourcesRetained:true,renderedIconPixels:colors,pageErrors:errors}));
 }finally{await browser.close();server.close();}

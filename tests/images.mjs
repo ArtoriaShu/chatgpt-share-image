@@ -38,10 +38,10 @@ try{
  const toast=await page.locator('#gpt-share-local #toast').textContent();assert(!toast.includes('无法读取'),toast);
  const exported=await page.evaluate(()=>window.exportedContent);
  for(const text of ['来源网站','cheatengin','纯文字来源','弹出来源','+1','+2','+3']) {
-  assert(!exported.text.includes(text),`source badge text excluded from PNG content: ${text}`);
-  assert(!(await page.locator('#gpt-share-local .row small').textContent()).includes(text),`source badge text excluded from selection summary: ${text}`);
+  assert(exported.text.includes(text),`compact source badge text retained: ${text}`);
+
  }
- assert(exported.text.includes('保留前文。保留后文。'),'surrounding prose preserved');
+ assert(exported.text.includes('保留前文。') && exported.text.includes('保留后文。'),'surrounding prose preserved');
  assert(exported.links.includes('普通正文链接'),'ordinary body links preserved');
  assert.equal(exported.images,2,'only body images remain in export');
  assert.equal(gmRequests.length-callsBefore,1,'only tainted cross-origin body image uses GM fallback');
@@ -57,5 +57,5 @@ try{
  await page.locator('[data-gpt-share-single]').first().click();await copied();
  assert((await page.locator('#gpt-share-local #toast').textContent()).includes('1 张原图无法读取'));
  assert.deepEqual(errors,[]);
- console.log(JSON.stringify({bodyImageButtonPreserved:true,crossOriginFallback:true,sourceBadgesAndTextExcluded:true,bodyLinksPreserved:true,renderedImagePixels:pixels,failedContentImageCount:1,missingGrantFallback:true,pageErrors:errors}));
+ console.log(JSON.stringify({bodyImageButtonPreserved:true,crossOriginFallback:true,compactSourceLabels:true,bodyLinksPreserved:true,renderedImagePixels:pixels,failedContentImageCount:1,missingGrantFallback:true,pageErrors:errors}));
 }finally{await browser.close();server.close();imageServer.close();}

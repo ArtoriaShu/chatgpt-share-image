@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ChatGPT 分享长图 · 本地版
 // @namespace    local.chatgpt.share-image
-// @version      1.0.10
+// @version      1.0.11
 // @description  单条回答一键复制图片，也可多选对话生成高清 PNG 长图；本地处理。
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -87,7 +87,7 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
     <div class="intro">勾选你想分享的消息，生成后可复制或保存 PNG。<br>内容在本机处理，不上传对话。</div>
     <div class="options">
       <label class="field wide">图片标题（可修改或留空）<input id="title" maxlength="160"></label>
-      <label class="field">配色<select id="theme"><option value="light">浅色</option><option value="dark">深色</option></select></label>
+      <label class="field">外框配色<select id="theme"><option value="light">浅色</option><option value="dark">深色</option></select></label>
       <label class="field">图片长度<select id="length"><option value="4800">自动分图 · 适合发微信</option><option value="12000">较长图片 · 适合保存</option></select></label>
     </div>
     <div class="tools"><button id="all">全选</button><button id="none">清空</button><button id="ai">只选回答</button><button id="reload">重新读取整段</button><span id="count"></span></div>
@@ -176,7 +176,7 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
       if (el.tagName !== 'IMG' && !hasBodyImage(el)) badges.add(el);
     });
     // Some ChatGPT source pills have only a popover marker and a favicon,
-    // without any citation attributes. Remove the compact control as a whole.
+    // without any citation attributes. Identify the compact control as a whole.
     node.querySelectorAll('img').forEach(img => {
       if (!decorativeImage(img)) return;
       for (let el = img.parentElement; el && el !== node; el = el.parentElement) {
@@ -196,19 +196,10 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
     canvas.getContext('2d').drawImage(loaded, 0, 0, canvas.width, canvas.height);
     const data = canvas.toDataURL('image/png'); canvas.width = 1; canvas.height = 1; return data;
   }
-  const cardProps = ['display','flex-direction','flex-wrap','flex-grow','flex-shrink','flex-basis','justify-content','align-items','align-self','align-content','order','grid-column','grid-row','grid-auto-flow','column-gap','row-gap','padding-top','padding-right','padding-bottom','padding-left','margin-top','margin-right','margin-bottom','margin-left','border-top','border-right','border-bottom','border-left','border-radius','background-color','color','font-size','font-weight','font-style','line-height','text-align','text-decoration','white-space','vertical-align'];
-  function cardRoots(node) {
-    // Custom diagrams use layout containers rather than semantic Markdown tables.
-    return [...node.querySelectorAll('div,section,figure')].filter(el => {
-      if (el.closest('pre,.katex,.turn-action-controls') || el.matches('[data-markdown-text-style],.markdown')) return false;
-      const css = getComputedStyle(el);
-      return !!el.textContent.trim() && (/^(inline-)?(flex|grid)$/.test(css.display) ||
-        el.children.length > 0 && ['border-top-width','border-right-width','border-bottom-width','border-left-width'].some(p => parseFloat(css.getPropertyValue(p)) > 0));
-    });
-  }
-  function preserveCardStyle(el, copy) {
-    const css = getComputedStyle(el);
-    for (const p of cardProps) copy.style.setProperty(p, css.getPropertyValue(p));
+  const appearanceProps = ['display','visibility','box-sizing','flex-direction','flex-wrap','flex-grow','flex-shrink','flex-basis','justify-content','justify-items','justify-self','align-items','align-self','align-content','order','grid-column','grid-row','grid-auto-flow','column-gap','row-gap','padding-top','padding-right','padding-bottom','padding-left','margin-top','margin-right','margin-bottom','margin-left','border-top','border-right','border-bottom','border-left','border-radius','border-collapse','border-spacing','background-color','background-image','background-size','background-position','background-repeat','box-shadow','opacity','color','font-family','font-size','font-weight','font-style','line-height','letter-spacing','text-align','text-decoration','text-transform','white-space','vertical-align','list-style-type','list-style-position','word-break','overflow-wrap','object-fit','object-position'];
+  function preserveAppearance(el, copy, root = false, css = getComputedStyle(el)) {
+    for (const p of appearanceProps) copy.style.setProperty(p, css.getPropertyValue(p));
+    for (const p of ['column-count','column-rule','grid-auto-rows','grid-auto-columns']) copy.style.setProperty(p, css.getPropertyValue(p));
     // Resolve source grid tracks into proportions so wide cards fit the PNG width.
     for (const p of ['grid-template-columns','grid-template-rows']) {
       const tracks = css.getPropertyValue(p);
@@ -217,6 +208,56 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
       } else if (!p.endsWith('rows') || tracks === 'none') copy.style.setProperty(p, tracks);
     }
     copy.style.maxWidth = '100%'; copy.style.minWidth = '0';
+    copy.style.boxSizing = 'border-box';
+    // Keep content responsive without copying the viewport's fixed pixel widths.
+    const rect = el.getBoundingClientRect(), parent = el.parentElement;
+    const parentCSS = parent && getComputedStyle(parent), parentRect = parent?.getBoundingClientRect();
+    const parentWidth = parentRect && parentRect.width - parseFloat(parentCSS.paddingLeft || 0) - parseFloat(parentCSS.paddingRight || 0);
+    if (root) { copy.style.width = '100%'; copy.style.margin = '0'; }
+    else if (!/^(inline|contents)/.test(css.display) && !/^(table-row|table-cell)/.test(css.display) &&
+      !/flex|grid/.test(parentCSS?.display || '') && rect.width > 0 && parentWidth > 0 && rect.width < parentWidth * .95) {
+      copy.style.width = `${Math.min(100, rect.width / parentWidth * 100)}%`;
+    }
+    if (el.tagName === 'TABLE') { copy.style.width = '100%'; copy.style.tableLayout = 'fixed'; }
+    if (/^(PRE|CODE)$/.test(el.tagName)) { copy.style.whiteSpace = 'pre-wrap'; copy.style.overflowWrap = 'anywhere'; }
+    if (css.position === 'absolute') {
+      copy.style.position = 'absolute';
+      for (const p of ['top','right','bottom','left','z-index']) copy.style.setProperty(p, css.getPropertyValue(p));
+      // Absolute offsets refer to the positioned ancestor, not necessarily the parent.
+      const containing = el.offsetParent;
+      if (containing?.getBoundingClientRect().width > 0) {
+        for (const p of ['left','right']) if (css.getPropertyValue(p).endsWith('px')) copy.style.setProperty(p, `${parseFloat(css.getPropertyValue(p)) / containing.clientWidth * 100}%`);
+        copy.style.width = `${Math.min(100, rect.width / containing.clientWidth * 100)}%`;
+      }
+      copy.style.height = rect.height > 0 ? `${rect.height}px` : css.height;
+    } else if (css.position === 'relative') copy.style.position = 'relative';
+    // Positioned diagrams and CSS-only bars need their explicit vertical space.
+    if ([...el.children].some(child => getComputedStyle(child).position === 'absolute') ||
+      !el.children.length && !el.textContent.trim()) copy.style.height = rect.height > 0 ? `${rect.height}px` : css.height;
+  }
+  function preservePseudo(el, copy) {
+    if (el.namespaceURI !== 'http://www.w3.org/1999/xhtml') return;
+    for (const which of ['::before','::after']) {
+      const css = getComputedStyle(el, which), content = css.content;
+      if (css.display === 'none' || !content || /^(none|normal)$/.test(content)) continue;
+      // Materialize generated text/dots/lines; skip external generated images.
+      if (!/^"(?:[^"\\]|\\.)*"$/.test(content)) continue;
+      const pseudo = document.createElement('span');
+      pseudo.dataset.gptSharePseudo = which.slice(2);
+      try { pseudo.textContent = JSON.parse(content); } catch { pseudo.textContent = content.slice(1,-1); }
+      preserveAppearance(el, pseudo, false, css);
+      pseudo.style.width = css.width; pseudo.style.height = css.height;
+      for (const p of ['position','top','right','bottom','left','transform','transform-origin','z-index']) pseudo.style.setProperty(p, css.getPropertyValue(p));
+      if (which === '::before') copy.prepend(pseudo); else copy.append(pseudo);
+    }
+  }
+  function sourceLabel(el) {
+    const text = el.textContent.replace(/\s+/g,' ').trim();
+    if (!text) return document.createTextNode('');
+    const badge = document.createElement('span'); badge.dataset.gptShareSource = '';
+    badge.textContent = text;
+    badge.style.cssText = 'display:inline-block;vertical-align:middle;box-sizing:border-box;max-width:180px;padding:1px 7px;margin:0 3px;border-radius:10px;background:#f0f2f4;color:#5d6771;font:11px/18px Arial,"PingFang SC",sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left';
+    return badge;
   }
   function cardBackground(el) {
     for (let current = el; current; current = current.parentElement) {
@@ -225,7 +266,7 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
     }
     return '#fff';
   }
-  function exportSVG(svg) {
+  function exportSVG(svg, presentation) {
     const copy = svg.cloneNode(true);
     const originals = [svg, ...svg.querySelectorAll('*')];
     const clones = [copy, ...copy.querySelectorAll('*')];
@@ -248,7 +289,9 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
     const img = document.createElement('img');
     img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(copy))}`;
     img.alt = svg.getAttribute('aria-label') || '';
-    img.style.cssText = `display:inline-block;width:${width}px;height:${height}px;max-width:100%;margin:0;vertical-align:middle;flex-shrink:0`;
+    img.style.cssText = presentation;
+    img.style.width = `${width}px`; img.style.height = 'auto'; img.style.maxWidth = '100%';
+    img.style.verticalAlign = 'middle'; img.style.flexShrink = '0';
     return img;
   }
   function cleanMessage(node) {
@@ -256,26 +299,23 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
     const original = [node, ...node.querySelectorAll('*')];
     const cloned = [copy, ...copy.querySelectorAll('*')];
     const badges = sourceBadges(node);
-    const cards = cardRoots(node);
     original.forEach((el, i) => {
       const c = cloned[i];
-      if (badges.has(el)) { c.remove(); return; }
       if (c !== copy && !copy.contains(c)) return;
+      if (badges.has(el)) { c.replaceWith(sourceLabel(el)); return; }
       c.removeAttribute('id');
       for (const attr of [...c.attributes]) if (/^on/i.test(attr.name)) c.removeAttribute(attr.name);
       c.removeAttribute('style');
-      if (cards.some(root => root === el || root.contains(el))) preserveCardStyle(el, c);
-      else if (Number(getComputedStyle(el).fontWeight) >= 600) c.style.fontWeight = getComputedStyle(el).fontWeight;
-      if (cards.includes(el) && !cards.some(root => root !== el && root.contains(el))) c.style.backgroundColor = cardBackground(el);
+      preserveAppearance(el, c, el === node);
       if (el.tagName.toLowerCase() === 'svg' && !el.closest('.katex')) {
-        c.replaceWith(exportSVG(el)); return;
+        c.replaceWith(exportSVG(el, c.style.cssText)); return;
       }
       if (el.closest('.katex')) {
         const css = getComputedStyle(el);
         for (const p of mathProps) c.style.setProperty(p, css.getPropertyValue(p));
       }
       if (el.tagName === 'CANVAS') {
-        try { const img = document.createElement('img'); img.src = el.toDataURL(); c.replaceWith(img); }
+        try { const img = document.createElement('img'); img.src = el.toDataURL(); img.style.cssText = c.style.cssText; img.style.width = `${el.getBoundingClientRect().width}px`; img.style.height = 'auto'; c.replaceWith(img); }
         catch { c.replaceWith(document.createTextNode('[画布无法读取]')); }
       }
       if (el.tagName === 'IMG') {
@@ -284,17 +324,23 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
         // Capture an already loaded, origin-clean image without requesting it again.
         if (el.complete && el.naturalWidth) { try { c.src = rasterImage(el); } catch { /* use the image loader below */ } }
         for (const attr of ['srcset','loading','width','height','crossorigin','referrerpolicy']) c.removeAttribute(attr);
+        const rect = el.getBoundingClientRect();
+        c.style.width = rect.width > 0 ? `${rect.width}px` : 'auto'; c.style.height = 'auto';
       }
       // Image cards may mark the visible image aria-hidden because the button labels it.
       const hasImage = el.tagName === 'IMG' || el.querySelector('img');
       if (el.hidden || el.getAttribute('aria-hidden') === 'true' && !hasImage && !el.closest('.katex')) c.remove();
+      if (copy.contains(c)) preservePseudo(el, c);
     });
+    // Retain the source palette together, even when the outer card uses a different theme.
+    copy.style.backgroundColor = cardBackground(node);
+    copy.dataset.gptShareAppearance = '';
     copy.querySelectorAll('script,style,iframe,video,audio,form,input,textarea,select,.turn-action-controls,.sr-only,.katex-mathml').forEach(el => el.remove());
     // <picture> sources can override an embedded data URL inside the export frame.
     copy.querySelectorAll('picture source').forEach(el => el.remove());
     copy.querySelectorAll('button').forEach(el => {
       // Image cards are buttons too: unwrap them, preserving their actual content.
-      if (el.querySelector('img')) el.replaceWith(...el.childNodes);
+      if (el.querySelector('img,p,table') || el.textContent.trim().length > 80) el.replaceWith(...el.childNodes);
       else el.remove();
     });
     copy.querySelectorAll('svg').forEach(el => { if (!el.closest('.katex')) el.remove(); });
@@ -433,16 +479,26 @@ const renderCanvas=module.exports.default || module.exports.html2canvas || modul
   async function embedImages(sheet) {
     let failed = 0;
     const pending = new Map();
+    const embed = url => { if (!pending.has(url)) pending.set(url, embedImage(url)); return pending.get(url); };
     await Promise.all([...sheet.querySelectorAll('img')].map(async img => {
       const url = img.src;
       try {
-        if (!pending.has(url)) pending.set(url, embedImage(url));
-        img.src = await pending.get(url); await img.decode();
+        img.src = await embed(url); await img.decode();
       } catch {
         failed++;
         const placeholder = sheet.ownerDocument.createElement('div'); placeholder.className = 'placeholder';
         placeholder.textContent = `[图片无法嵌入${img.alt ? `：${img.alt}` : '，原站未允许读取'}]`; img.replaceWith(placeholder);
       }
+    }));
+    await Promise.all([...sheet.querySelectorAll('[style]')].map(async el => {
+      const bg = el.style.backgroundImage;
+      if (!bg.includes('url(')) return;
+      const urls = [...bg.matchAll(/url\((?:"([^"]*)"|'([^']*)'|([^)]*))\)/g)];
+      let embedded = bg;
+      try {
+        for (const match of urls) embedded = embedded.replace(match[0], `url("${await embed((match[1] || match[2] || match[3]).trim())}")`);
+        el.style.backgroundImage = embedded;
+      } catch { failed++; el.style.backgroundImage = 'none'; }
     })); return failed;
   }
   async function loadImage(url, cors = false) {
