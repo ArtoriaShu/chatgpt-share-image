@@ -200,6 +200,7 @@
       try { pseudo.textContent = JSON.parse(content); } catch { pseudo.textContent = content.slice(1,-1); }
       preserveAppearance(el, pseudo, false, css);
       pseudo.style.width = css.width; pseudo.style.height = css.height;
+      pseudo.style.minHeight = css.minHeight;
       for (const p of ['position','top','right','bottom','left','transform','transform-origin','z-index']) pseudo.style.setProperty(p, css.getPropertyValue(p));
       if (which === '::before') copy.prepend(pseudo); else copy.append(pseudo);
     }
