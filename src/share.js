@@ -177,11 +177,16 @@
         for (const p of ['left','right']) if (css.getPropertyValue(p).endsWith('px')) copy.style.setProperty(p, `${parseFloat(css.getPropertyValue(p)) / containing.clientWidth * 100}%`);
         copy.style.width = `${Math.min(100, rect.width / containing.clientWidth * 100)}%`;
       }
-      copy.style.height = rect.height > 0 ? `${rect.height}px` : css.height;
+      copy.style.minHeight = rect.height > 0 ? `${rect.height}px` : css.height;
     } else if (css.position === 'relative') copy.style.position = 'relative';
-    // Positioned diagrams and CSS-only bars need their explicit vertical space.
-    if ([...el.children].some(child => getComputedStyle(child).position === 'absolute') ||
-      !el.children.length && !el.textContent.trim()) copy.style.height = rect.height > 0 ? `${rect.height}px` : css.height;
+    // Only all-positioned diagrams lack intrinsic height. A floating helper in
+    // normal prose must never freeze that prose to its old viewport height.
+    const positions = [...el.children].map(child => getComputedStyle(child));
+    const hasText = [...el.childNodes].some(child => child.nodeType === Node.TEXT_NODE && child.textContent.trim());
+    const hasFlow = hasText || positions.some(style => style.display !== 'none' && !['absolute','fixed'].includes(style.position));
+    if (!root && !hasFlow && (positions.some(style => style.position === 'absolute') || !el.children.length)) {
+      copy.style.height = rect.height > 0 ? `${rect.height}px` : css.height;
+    }
   }
   function preservePseudo(el, copy) {
     if (el.namespaceURI !== 'http://www.w3.org/1999/xhtml') return;
@@ -529,6 +534,15 @@
     }
     cuts.push(height); return cuts;
   }
+  function fitExportHeight(sheet) {
+    // Once images and fonts settle, grow fixed diagram boxes if narrower text
+    // has overflowed them. Work inside out so parent/footer layout stays valid.
+    const candidates = [...sheet.querySelectorAll('[data-gpt-share-appearance], [data-gpt-share-appearance] *')].reverse();
+    for (const el of candidates) {
+      if (!el.style.height || !el.children.length || el.closest('.katex') || el.hasAttribute('data-gpt-share-source')) continue;
+      if (el.scrollHeight > el.clientHeight + 1) el.style.height = `${Math.ceil(el.scrollHeight + el.offsetHeight - el.clientHeight)}px`;
+    }
+  }
   async function generate(direct = false) {
     // DOM onclick handlers pass an event; only an explicit true requests silent copying.
     direct = direct === true;
@@ -558,6 +572,7 @@
       const foot = d.createElement('div'); foot.className = 'foot'; foot.textContent = 'ChatGPT · 对话分享'; sheet.append(foot);
       const failedImages = await embedImages(sheet);
       await d.fonts.ready; await wait(100);
+      fitExportHeight(sheet);
       const height = Math.ceil(sheet.scrollHeight);
       if (direct && height > 32000) throw new Error('这条回答过长，请用“分享为图片”分图保存。');
       const cuts = direct ? [0, height] : cutsFor(sheet, Number($('length').value));
